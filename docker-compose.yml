@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: "rabbitmq:3.12-management"
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=password
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: postgres:13
+    container_name: hedge_fund_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: hedge_fund_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d hedge_fund_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backtest_orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    container_name: backtest_orchestrator
+    command: python -u orchestrator/main.py
+    volumes:
+      - ./src:/app/src
+      - ./orchestrator:/app/orchestrator
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      api_gateway:
+        condition: service_started
+    env_file: .env
+
+  api_gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: api_gateway
+    command: uvicorn gateway.main:app --host 0.0.0.0 --port 8080
+    volumes:
+      - ./gateway:/app/gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      data_ingestion:
+        condition: service_started
+      portfolio_management:
+        condition: service_started
+      strategy_service:
+        condition: service_started
+    env_file: .env
+
+  data_ingestion:
+    build: { context: ., dockerfile: services/data_ingestion/Dockerfile }
+    container_name: data_ingestion_service
+    command: uvicorn services.data_ingestion.main:app --host 0.0.0.0 --port 8001
+    volumes: [./services/data_ingestion:/app/services/data_ingestion]
+
+  portfolio_management:
+    build: { context: ., dockerfile: services/portfolio_management/Dockerfile }
+    container_name: portfolio_management_service
+    command: uvicorn services.portfolio_management.main:app --host 0.0.0.0 --port 8002
+    volumes: [./services/portfolio_management:/app/services/portfolio_management]
+
+  strategy_service:
+    build: { context: ., dockerfile: services/strategy/Dockerfile }
+    container_name: strategy_service
+    command: uvicorn services.strategy.main:app --host 0.0.0.0 --port 8003
+    volumes: [./src:/app/src, ./services/strategy:/app/services/strategy]
+    env_file: .env
+
+  frontend:
+    build: { context: ./app/frontend }
+    container_name: hedge_fund_frontend
+    ports: ["5173:5173"]
+    volumes: [./app/frontend:/app, /app/node_modules]
+    environment: [VITE_API_URL=http://localhost:8080]
+    depends_on: [api_gateway]
+
+volumes:
+  postgres_data:

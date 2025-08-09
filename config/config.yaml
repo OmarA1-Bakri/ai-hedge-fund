@@ -1,0 +1,56 @@
+# Global runtime configuration
+seed: 42
+
+data:
+  tickers: ["AAPL", "MSFT", "NVDA"]
+  start_date: "2024-10-01"
+  end_date: "2025-01-31"
+  source: "yfinance"         # placeholder; can be swapped
+  calendar: "XNYS"           # exchange_calendars id
+  timezone: "America/New_York"
+  cache_dir: "artifacts/cache"
+
+features:
+  use_microstructure: true
+  use_regime: true
+  use_sentiment: false       # default off until keys wired
+  use_fundamentals: false    # default off until keys wired
+  windows:
+    mom_short: 5
+    mom_long: 20
+    vol_lookback: 20
+
+labels:
+  horizons: [1]              # days; can add 5 later
+  embargo_days: 5
+
+models:
+  use_ml_signals: false      # start with heuristics; we’ll flip later
+  cv:
+    n_splits: 5
+    embargo_days: 5
+    purge: true
+  optuna:
+    enable: false
+    n_trials: 25
+
+risk:
+  vol_target_annual: 0.15
+  single_name_max_weight: 0.10
+  gross_exposure_max: 1.0
+  net_exposure_max: 1.0
+  turnover_annual_max: 2.5   # 250%
+
+costs:
+  bps_per_trade: 1           # 1 bp fee
+  slippage_coeff: 0.1        # simple impact proxy; tune later
+  adv_frac_max: 0.2
+
+execution:
+  paper:
+    starting_cash: 100000.0
+    twap_chunks: 3
+
+eval:
+  smoke_backtest_days: 30
+  benchmark: "equal_weight_universe"
